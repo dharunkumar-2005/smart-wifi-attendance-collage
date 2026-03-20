@@ -1,0 +1,6 @@
+
+{
+  "name": "Smart Wi-Fi Attendance System",
+  "description": "A professional React-based attendance portal that simulates Wi-Fi verification and provides smart insights using the Gemini API. Features include registration number logging, CSV export, and an administrative dashboard.",
+  "requestFramePermissions": ["geolocation"]
+}
