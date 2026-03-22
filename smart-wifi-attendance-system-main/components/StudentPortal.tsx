@@ -57,14 +57,13 @@ const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
           return;
         }
 
-        // Check 2: Is it the allowed hotspot IP?
-        if (hostname === ALLOWED_HOTSPOT_IPS) { 
+    // Vercel domain-ayum oru network-ah allow panna sollunga
+if (hostname === ALLOWED_HOTSPOT_IPS || hostname === 'smart-wifi-attendance-collage.vercel.app') {
   setIsNetworkAuthorized(true);
   setStatus('idle');
   setUserIP(hostname);
   return;
 }
-
         // Check 3: Not authorized - deny access
         setIsNetworkAuthorized(false);
         setStatus('unauthorized_network');
