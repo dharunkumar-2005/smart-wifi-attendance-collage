@@ -19,7 +19,7 @@ const StudentPortal = () => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [alreadySubmittedError, setAlreadySubmittedError] = useState<string | null>(null);
-  const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
+const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
   const [userIP, setUserIP] = useState<string | null>(null);
 
   // Camera-related state
@@ -39,8 +39,8 @@ const StudentPortal = () => {
   const PUBLIC_KEY = 'lY_7i4-3Fv9oPY7Oi';
 
   // Allowed Networks - Local Network Gateway
-  const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1'];
-  const ALLOWED_HOTSPOT_IP = '192.168.137.1'; // Laptop's Mobile Hotspot IP
+  const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1', 'smart-wifi-attendance-collage.vercel.app'];
+  const ALLOWED_HOTSPOT_IPS = '192.168.137.1'; // Laptop's Mobile Hotspot IP
 
   // Fast Network Validation useEffect - NO EXTERNAL API CALLS
   React.useEffect(() => {
@@ -58,12 +58,12 @@ const StudentPortal = () => {
         }
 
         // Check 2: Is it the allowed hotspot IP?
-        if (hostname === ALLOWED_HOTSPOT_IP) {
-          setIsNetworkAuthorized(true);
-          setStatus('idle');
-          setUserIP(hostname);
-          return;
-        }
+        if (hostname === ALLOWED_HOTSPOT_IPS) { 
+  setIsNetworkAuthorized(true);
+  setStatus('idle');
+  setUserIP(hostname);
+  return;
+}
 
         // Check 3: Not authorized - deny access
         setIsNetworkAuthorized(false);
