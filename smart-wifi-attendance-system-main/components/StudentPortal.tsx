@@ -107,6 +107,19 @@ const StudentPortal = () => {
     const currentDeviceId = getDeviceId();
 
     try {
+      // STRICT: Check if this device already has a DIFFERENT mobile number registered
+      const deviceCheckRef = ref(db, `device_mobile/${currentDeviceId}`);
+      const deviceCheckSnap = await get(deviceCheckRef);
+
+      if (deviceCheckSnap.exists()) {
+        const registeredMobile = deviceCheckSnap.val().mobileNumber;
+        if (registeredMobile !== formattedMobile) {
+          alert("❌ ERROR: This device can only be used with mobile number: " + registeredMobile + "\n\nOnly ONE mobile number per device is allowed.");
+          setStatus('mobile_mismatch');
+          return;
+        }
+      }
+
       // Check if mobile number is already registered to a different device
       const mobileCheckRef = ref(db, `mobile_devices/${formattedMobile}`);
       const mobileCheckSnap = await get(mobileCheckRef);
@@ -152,6 +165,12 @@ const StudentPortal = () => {
           regNo: formattedReg,
           deviceId: currentDeviceId,
           mobileNumber: formattedMobile,
+          registeredAt: new Date().toISOString()
+        });
+        // Register device to mobile mapping
+        await set(deviceCheckRef, {
+          mobileNumber: formattedMobile,
+          regNo: formattedReg,
           registeredAt: new Date().toISOString()
         });
         setStatus('ready');
@@ -294,6 +313,12 @@ const StudentPortal = () => {
     setShowCameraModal(false);
   }, []);
 
+  const retakePhoto = React.useCallback(() => {
+    setCapturedFace(null);
+    setCameraError(null);
+    startCamera();
+  }, [startCamera]);
+
   const capturePhoto = React.useCallback(() => {
     try {
       const currentDeviceId = getDeviceId();
@@ -324,21 +349,18 @@ const StudentPortal = () => {
   }, [isCameraActive, stopCameraStream]);
 
   const handleSubmitAttendance = React.useCallback(async () => {
-    // ===== FACE VERIFICATION CHECK =====
+    console.log('📤 Submit button clicked. capturedFace status:', !!capturedFace);
     if (!capturedFace) {
-      alert('⚠️ Please capture your face photo for verification before submitting.');
-      setShowCameraModal(true);
+      console.log('❌ NO CAPTURED FACE - showing error');
+      alert('⚠️ Please capture your face photo first!\n\nSteps:\n1. Click "OPEN CAMERA"\n2. Click "CAPTURE PHOTO"\n3. Then click "SUBMIT ATTENDANCE"');
       return;
     }
 
     // ===== STRICT ONE DEVICE, ONE SUBMISSION CHECK =====
-    // Check if this device has already submitted attendance (device-wide lock)
     const deviceAlreadySubmitted = localStorage.getItem('attendance_completed');
     
     if (deviceAlreadySubmitted === 'true') {
-      const errorMsg = '❌ Access Denied: You have already submitted attendance from this device.';
-      setAlreadySubmittedError(errorMsg);
-      setStatus('device_locked');
+      const errorMsg = '❌ This device has already submitted attendance today.';
       alert(errorMsg);
       return;
     }
@@ -348,7 +370,7 @@ const StudentPortal = () => {
     const formattedMobile = mobileNumber.replace(/\D/g, '');
 
     try {
-      // Check if already submitted today in Firebase (additional check)
+      // Check if already submitted today in Firebase
       const attendanceRef = ref(db, 'attendance');
       const attendanceSnap = await get(attendanceRef);
       const attendanceData = attendanceSnap.val() || {};
@@ -358,11 +380,11 @@ const StudentPortal = () => {
       );
 
       if (hasSubmittedToday) {
-        alert("Attendance already submitted for today!");
+        alert("❌ Attendance already submitted for today!");
         return;
       }
 
-      // Submit attendance with face data
+      // Submit attendance with verification timestamp
       const submissionData = {
         name,
         regNo: formattedReg,
@@ -371,33 +393,30 @@ const StudentPortal = () => {
         date: today,
         deviceId: getDeviceId(),
         status: 'Verified',
-        face: capturedFace.base64, // Full resolution face image
         faceVerified: true,
         cameraTimestamp: capturedFace.timestamp
       };
 
       await set(ref(db, `attendance/${Date.now()}`), submissionData);
-      
-      // ===== SET DEVICE LOCK AFTER SUCCESSFUL SUBMISSION =====
-      // This lock is permanent and persists even after page refresh
       localStorage.setItem('attendance_completed', 'true');
       
-      alert("✅ Attendance submitted successfully with face verification!");
-      setStatus('submitted');
-      setSubmissionError(null);
-      setAlreadySubmittedError(null);
-
-      // Reset for next use (but device is now locked)
-      setName('');
-      setRegNo('');
-      setMobileNumber('');
-      setCapturedFace(null);
-      setStatus('idle');
+      alert("✅ Submitted Successfully");
+      console.log('✅ Attendance submitted successfully');
+      
+      // Reset form
+      setTimeout(() => {
+        setName('');
+        setRegNo('');
+        setMobileNumber('');
+        setCapturedFace(null);
+        setStatus('idle');
+      }, 500);
     } catch (err) {
-      alert("Submission failed!");
-      console.error(err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('❌ Submission error:', err);
+      alert(`Submission failed: ${errorMsg}`);
     }
-  }, [name, regNo, mobileNumber, getDeviceId]);
+  }, [name, regNo, mobileNumber, getDeviceId, capturedFace]);
 
   // Update time every second
   React.useEffect(() => {
@@ -548,7 +567,7 @@ const StudentPortal = () => {
                   <p className="text-green-300 text-sm font-semibold">✅ Photo captured successfully!</p>
                 </div>
                 <button
-                  onClick={capturePhoto}
+                  onClick={retakePhoto}
                   className="w-full min-h-[48px] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
                 >
                   RETAKE PHOTO
@@ -646,9 +665,9 @@ const StudentPortal = () => {
                     ? 'bg-[#00ffa3] text-black hover:shadow-[0_0_20px_rgba(0,255,163,0.4)]'
                     : 'bg-gray-600 text-gray-300 cursor-not-allowed opacity-50'
                 }`}
-                title={!capturedFace ? 'Please capture your face photo first' : ''}
+                title={!capturedFace ? 'Capture your face photo first' : 'Click to submit attendance'}
               >
-                🚀 SUBMIT ATTENDANCE
+                {capturedFace ? '🚀 SUBMIT ATTENDANCE' : '📷 CAPTURE PHOTO FIRST'}
               </button>
             )}
 
