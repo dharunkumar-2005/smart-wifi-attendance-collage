@@ -19,7 +19,7 @@ const StudentPortal = () => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [alreadySubmittedError, setAlreadySubmittedError] = useState<string | null>(null);
-const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
+const [isNetworkAuthorized, setIsNetworkAuthorized] = React.useState<boolean>(false); // 'true'-ah maathi 'false'-nu veinga
   const [userIP, setUserIP] = useState<string | null>(null);
 
   // Camera-related state
@@ -39,7 +39,7 @@ const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
   const PUBLIC_KEY = 'lY_7i4-3Fv9oPY7Oi';
 
   // Allowed Networks - Local Network Gateway
-  const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1', 'smart-wifi-attendance-collage.vercel.app'];
+ const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1']; 
   const ALLOWED_HOTSPOT_IPS = '192.168.137.1'; // Laptop's Mobile Hotspot IP
 
   // Fast Network Validation useEffect - NO EXTERNAL API CALLS
@@ -56,9 +56,8 @@ const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
           setUserIP('localhost');
           return;
         }
-
-    // Vercel domain-ayum oru network-ah allow panna sollunga
-if (hostname === ALLOWED_HOTSPOT_IPS || hostname === 'smart-wifi-attendance-collage.vercel.app') {
+// '||' condition-ah remove pannittu idhai mattum veinga
+if (hostname === ALLOWED_HOTSPOT_IPS) { 
   setIsNetworkAuthorized(true);
   setStatus('idle');
   setUserIP(hostname);
