@@ -38,10 +38,15 @@ export interface Student {
 export interface StudentAttendanceRecord {
   name: string;
   regNo: string;
-  face?: string;
+  mobileNumber?: string;
   time?: string;
   date?: string;
   status?: string;
+  deviceId?: string;
+  face?: string; // Base64 encoded face image
+  faceThumbnail?: string; // Compressed thumbnail
+  faceVerified?: boolean;
+  cameraTimestamp?: string;
 }
 
 /**

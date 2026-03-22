@@ -37,6 +37,7 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
   onWipeDevice
 }) => {
   const [view, setView] = useState('dashboard');
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -448,6 +449,7 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Name</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Reg No</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Time</th>
+                      <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Face Photo</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Actions</th>
                     </tr>
                   </thead>
@@ -458,6 +460,18 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                           <td className="py-4 text-white">{record.data.name}</td>
                           <td className="py-4 text-white">{record.data.regNo}</td>
                           <td className="py-4 text-white">{record.data.time}</td>
+                          <td className="py-4 text-center">
+                            {(record.data as any).face || record.data.photo ? (
+                              <button
+                                onClick={() => setSelectedPhoto((record.data as any).face || record.data.photo || '')}
+                                className="px-4 py-2 bg-[#00d1ff] text-black text-xs font-bold rounded-lg hover:shadow-[0_0_15px_rgba(0,209,255,0.4)] transition-all"
+                              >
+                                📸 VIEW
+                              </button>
+                            ) : (
+                              <span className="text-gray-500 text-xs">No Photo</span>
+                            )}
+                          </td>
                           <td className="py-4">
                             <button
                               onClick={() => handleDeleteAttendanceRecord(record.id)}
@@ -470,7 +484,7 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="text-center py-8 text-gray-400">No attendance recorded yet</td>
+                        <td colSpan={6} className="text-center py-8 text-gray-400">No attendance recorded yet</td>
                       </tr>
                     )}
                   </tbody>
@@ -834,6 +848,47 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                   <li>✓ Never use the same password for multiple accounts</li>
                   <li>✓ Use a combination of letters, numbers, and symbols</li>
                 </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PHOTO MODAL */}
+        {selectedPhoto && (
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedPhoto(null)}
+          >
+            <div 
+              className="bg-gradient-to-br from-[#0a2342] via-[#05050a] to-[#1a0033] border-2 border-[#00d1ff]/50 rounded-3xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[#00d1ff] font-bold text-2xl">📸 CAPTURED FACE PHOTO</h3>
+                <button
+                  onClick={() => setSelectedPhoto(null)}
+                  className="text-gray-400 hover:text-white text-3xl font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="bg-black rounded-2xl overflow-hidden border-2 border-[#00d1ff]/30 mb-6">
+                <img 
+                  src={selectedPhoto} 
+                  alt="Captured face" 
+                  className="w-full h-auto object-contain"
+                />
+              </div>
+              
+              <div className="space-y-3 text-center">
+                <p className="text-gray-400 text-sm">✅ Face verified and saved securely</p>
+                <button
+                  onClick={() => setSelectedPhoto(null)}
+                  className="w-full min-h-[48px] py-3 bg-[#00d1ff] text-black font-bold rounded-xl hover:shadow-[0_0_20px_rgba(0,209,255,0.4)] transition-all"
+                >
+                  CLOSE
+                </button>
               </div>
             </div>
           </div>

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getDatabase, ref, get, set, update } from 'firebase/database';
 import { app } from './firebase'; 
 import emailjs from '@emailjs/browser';
+import { cameraService, CapturedFaceData } from '../services/cameraService';
+import { Camera, X, Check } from 'lucide-react';
 
 const db = getDatabase(app);
 
@@ -10,7 +12,7 @@ const StudentPortal = () => {
   const [name, setName] = useState('');
   const [regNo, setRegNo] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [status, setStatus] = useState<'idle' | 'verifying' | 'mismatch' | 'mobile_mismatch' | 'otp_pending' | 'ready' | 'submitted' | 'duplicate_submission' | 'device_locked' | 'checking_network' | 'unauthorized_network'>('checking_network');
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'mismatch' | 'mobile_mismatch' | 'otp_pending' | 'ready' | 'submitted' | 'duplicate_submission' | 'device_locked' | 'checking_network' | 'unauthorized_network' | 'camera_capture' | 'camera_error'>('checking_network');
   const [otpInput, setOtpInput] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
@@ -19,6 +21,14 @@ const StudentPortal = () => {
   const [alreadySubmittedError, setAlreadySubmittedError] = useState<string | null>(null);
   const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
   const [userIP, setUserIP] = useState<string | null>(null);
+
+  // Camera-related state
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [capturedFace, setCapturedFace] = useState<CapturedFaceData | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const navigate = useNavigate();
 
@@ -37,7 +47,7 @@ const StudentPortal = () => {
     const validateNetwork = () => {
       try {
         // Get hostname/IP from the URL
-        const hostname = window.location.hostname;
+        const { hostname } = window.location;
         
         // Check 1: Is it localhost?
         if (LOCALHOST_HOSTNAMES.includes(hostname)) {
@@ -229,19 +239,98 @@ const StudentPortal = () => {
     }
   }, [otpInput, generatedOtp, regNo, mobileNumber, getDeviceId]);
 
+  const [readyToActivate, setReadyToActivate] = React.useState(false);
+
   const startCamera = React.useCallback(async () => {
-    // Camera functionality removed
+    setCameraLoading(true);
+    setCameraError(null);
+    setReadyToActivate(false);
+    
+    try {
+      // Check camera support
+      if (!cameraService.isCameraSupported()) {
+        setCameraError('Camera is not supported on this device. Please use a device with a camera.');
+        setCameraLoading(false);
+        return;
+      }
+
+      console.log('Requesting camera permission...');
+      // Request camera access FIRST
+      const permission = await cameraService.requestCameraAccess();
+      
+      if (!permission.granted) {
+        setCameraError(permission.error || 'Camera access denied');
+        setCameraLoading(false);
+        return;
+      }
+
+      console.log('✅ Permission granted, now activating camera UI...');
+      // Set this flag to trigger the video element to be rendered
+      setReadyToActivate(true);
+      // Set active to render the video element in DOM
+      setIsCameraActive(true);
+      setCameraLoading(false);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to initialize camera';
+      console.error('Camera initialization error:', error);
+      setCameraError(errorMsg);
+      setCameraLoading(false);
+    }
   }, []);
 
+  // Initialize camera stream AFTER video element is rendered
+  useEffect(() => {
+    if (readyToActivate && isCameraActive && videoRef.current) {
+      console.log('Initializing camera stream on video element...');
+      cameraService.initializeCamera(videoRef.current);
+      console.log('✅ Camera stream initialized successfully');
+      setReadyToActivate(false);
+    }
+  }, [readyToActivate, isCameraActive]);
+
   const stopCameraStream = React.useCallback(() => {
-    // Camera functionality removed
+    cameraService.stopCamera();
+    setIsCameraActive(false);
+    setShowCameraModal(false);
   }, []);
 
   const capturePhoto = React.useCallback(() => {
-    // Camera functionality removed
-  }, [stopCameraStream]);
+    try {
+      const currentDeviceId = getDeviceId();
+      const faceData = cameraService.captureFace(currentDeviceId);
+
+      if (faceData) {
+        setCapturedFace(faceData);
+        // Automatically stop the camera after capturing
+        cameraService.stopCamera();
+        setIsCameraActive(false);
+        console.log('✅ Face captured and camera closed. Ready to submit.');
+        alert('✅ Face captured successfully! You can now SUBMIT ATTENDANCE on the right side.');
+      } else {
+        setCameraError('Failed to capture face. Please try again.');
+      }
+    } catch (error) {
+      setCameraError('Error capturing face: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  }, [getDeviceId]);
+
+  // Cleanup camera on component unmount
+  useEffect(() => {
+    return () => {
+      if (isCameraActive) {
+        stopCameraStream();
+      }
+    };
+  }, [isCameraActive, stopCameraStream]);
 
   const handleSubmitAttendance = React.useCallback(async () => {
+    // ===== FACE VERIFICATION CHECK =====
+    if (!capturedFace) {
+      alert('⚠️ Please capture your face photo for verification before submitting.');
+      setShowCameraModal(true);
+      return;
+    }
+
     // ===== STRICT ONE DEVICE, ONE SUBMISSION CHECK =====
     // Check if this device has already submitted attendance (device-wide lock)
     const deviceAlreadySubmitted = localStorage.getItem('attendance_completed');
@@ -273,7 +362,7 @@ const StudentPortal = () => {
         return;
       }
 
-      // Submit attendance
+      // Submit attendance with face data
       const submissionData = {
         name,
         regNo: formattedReg,
@@ -281,7 +370,10 @@ const StudentPortal = () => {
         time: new Date().toLocaleTimeString(),
         date: today,
         deviceId: getDeviceId(),
-        status: 'Verified'
+        status: 'Verified',
+        face: capturedFace.base64, // Full resolution face image
+        faceVerified: true,
+        cameraTimestamp: capturedFace.timestamp
       };
 
       await set(ref(db, `attendance/${Date.now()}`), submissionData);
@@ -290,7 +382,7 @@ const StudentPortal = () => {
       // This lock is permanent and persists even after page refresh
       localStorage.setItem('attendance_completed', 'true');
       
-      alert("✅ Attendance submitted successfully!");
+      alert("✅ Attendance submitted successfully with face verification!");
       setStatus('submitted');
       setSubmissionError(null);
       setAlreadySubmittedError(null);
@@ -299,6 +391,7 @@ const StudentPortal = () => {
       setName('');
       setRegNo('');
       setMobileNumber('');
+      setCapturedFace(null);
       setStatus('idle');
     } catch (err) {
       alert("Submission failed!");
@@ -320,55 +413,56 @@ const StudentPortal = () => {
       
       {/* NETWORK AUTHORIZATION CHECK */}
       {status === 'unauthorized_network' && (
-        <div className="max-w-2xl mx-auto mb-8">
-          <div className="bg-red-600/30 border-2 border-red-500 rounded-3xl p-8 backdrop-blur-md">
-            <h2 className="text-center text-3xl font-bold text-red-400 mb-6">🔒 ACCESS DENIED</h2>
-            
-            <div className="space-y-6">
-              <div className="bg-red-500/10 border border-red-500/30 p-5 rounded-xl">
-                <p className="text-red-300 text-lg font-semibold mb-3">
-                  ❌ Unauthorized Network Detected
+        <div className="min-h-screen w-full flex items-center justify-center fixed inset-0 bg-gradient-to-br from-[#0a2342] via-[#05050a] to-[#1a0033] z-50">
+          <div className="text-center px-6">
+            {/* Large Red Stamp Effect */}
+            <div className="mb-8 relative">
+              <div className="absolute inset-0 bg-red-600 opacity-10 blur-3xl rounded-full"></div>
+              <div className="relative inline-block">
+                <div className="border-4 border-red-600 px-12 py-8 rounded-2xl transform -rotate-3">
+                  <h2 className="text-7xl font-black text-red-600 tracking-widest drop-shadow-2xl" style={{
+                    textShadow: '0 4px 15px rgba(220, 38, 38, 0.5), 0 0 30px rgba(220, 38, 38, 0.3)',
+                    letterSpacing: '0.15em'
+                  }}>
+                    ACCESS
+                  </h2>
+                  <h2 className="text-7xl font-black text-red-600 tracking-widest drop-shadow-2xl" style={{
+                    textShadow: '0 4px 15px rgba(220, 38, 38, 0.5), 0 0 30px rgba(220, 38, 38, 0.3)',
+                    letterSpacing: '0.15em'
+                  }}>
+                    DENIED
+                  </h2>
+                </div>
+              </div>
+            </div>
+
+            {/* Message */}
+            <div className="space-y-6 max-w-2xl">
+              <div className="bg-red-600/20 border-2 border-red-500 rounded-2xl p-8 backdrop-blur-md">
+                <p className="text-red-300 text-2xl font-bold mb-4">
+                  🚫 Unauthorized Network Detected
                 </p>
-                <p className="text-red-300 text-base mb-4">
-                  This portal can only be accessed from an authorized network.
+                <p className="text-red-200 text-lg mb-4">
+                  This portal can only be accessed from the authorized network.
                 </p>
-                <p className="text-red-400 text-base font-semibold mb-2">
-                  📡 Please connect to the KNCET Official Hotspot to access this portal.
-                </p>
+                <div className="border-t border-red-500/30 pt-6 mt-6">
+                  <p className="text-amber-300 font-semibold text-lg mb-3">
+                    ⚠️ To Access This Portal:
+                  </p>
+                  <p className="text-white text-xl font-bold mb-2">
+                    Connect to: <span className="text-[#00d1ff]">KNCET Official Hotspot</span>
+                  </p>
+                  <p className="text-gray-300 text-sm mt-4">
+                    Your IP: <span className="font-mono text-red-400">{userIP || 'Detecting...'}</span>
+                  </p>
+                </div>
               </div>
 
-              <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-xl">
-                <p className="text-red-300 text-sm mb-2">
-                  <span className="font-semibold">Your Current Network:</span>
-                </p>
-                <p className="text-red-400 font-mono text-sm break-all">
-                  IP: {userIP || 'Checking...'}
+              <div className="bg-black/40 border border-red-500/20 rounded-xl p-6">
+                <p className="text-gray-400 text-sm">
+                  Contact your administrator if you believe this is an error.
                 </p>
               </div>
-
-              <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl">
-                <p className="text-amber-200 text-sm">
-                  <span className="font-semibold">ℹ️ Authorized Networks:</span>
-                </p>
-                <ul className="text-amber-200 text-sm mt-2 space-y-1">
-                  <li>✓ KNCET Official Hotspot (192.168.137.1)</li>
-                  <li>✓ Localhost (127.0.0.1)</li>
-                </ul>
-              </div>
-
-              <button
-                onClick={() => {
-                  // Reload the page to recheck network
-                  window.location.reload();
-                }}
-                className="w-full min-h-[48px] py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all"
-              >
-                🔄 REFRESH & RETRY
-              </button>
-
-              <p className="text-center text-gray-400 text-xs">
-                If you believe this is an error, contact your institute administrator.
-              </p>
             </div>
           </div>
         </div>
@@ -376,10 +470,112 @@ const StudentPortal = () => {
 
       {/* MAIN PORTAL - Only visible if network is authorized */}
       {isNetworkAuthorized && status !== 'unauthorized_network' && (
-      <div className="max-w-6xl mx-auto">
-        {/* Main Layout: Details Section */}
-        <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mb-8">
-          {/* Attendance Details */}
+      <div className="max-w-7xl mx-auto">
+        {/* Two Column Layout: Camera (LEFT) + Form (RIGHT) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          
+          {/* CAMERA SECTION - LEFT SIDE */}
+          <div className="bg-gradient-to-b from-[#00d1ff]/10 to-transparent p-6 sm:p-8 rounded-3xl border border-[#00d1ff]/30 backdrop-blur-md">
+            <div className="flex items-center gap-2 mb-4">
+              <Camera size={24} className="text-[#00d1ff]" />
+              <h2 className="text-[#00d1ff] font-bold text-lg">PHOTO VERIFICATION</h2>
+            </div>
+            <p className="text-gray-400 text-sm mb-6">
+              {isCameraActive ? 'Position your face and capture' : 'Camera inactive - click below to request permission and start.'}
+            </p>
+            
+            {/* Camera Preview or Camera Icon */}
+            <div className="relative bg-black rounded-2xl overflow-hidden border-2 border-[#00d1ff]/50 mb-6 aspect-video flex items-center justify-center">
+              {isCameraActive ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-48 h-56 border-4 border-[#00d1ff]/50 rounded-2xl"></div>
+                  </div>
+                </>
+              ) : capturedFace ? (
+                <img 
+                  src={capturedFace.base64} 
+                  alt="Captured face" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="text-center">
+                  <Camera size={64} className="text-[#00d1ff]/50 mx-auto mb-4" />
+                  <p className="text-gray-500">Camera inactive</p>
+                </div>
+              )}
+            </div>
+
+            {/* Camera Controls */}
+            {!isCameraActive && !capturedFace && !cameraError && (
+              <button
+                onClick={startCamera}
+                disabled={cameraLoading}
+                className="w-full min-h-[48px] py-3 bg-[#00d1ff] text-black font-bold rounded-xl hover:shadow-[0_0_20px_rgba(0,209,255,0.4)] transition-all flex items-center justify-center gap-2"
+              >
+                {cameraLoading ? '⏳ INITIALIZING...' : '📷 OPEN CAMERA'}
+              </button>
+            )}
+
+            {isCameraActive && !capturedFace && (
+              <div className="space-y-2">
+                <button
+                  onClick={capturePhoto}
+                  className="w-full min-h-[48px] py-3 bg-[#00ffa3] text-black font-bold rounded-xl hover:shadow-[0_0_20px_rgba(0,255,163,0.4)] transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={20} />
+                  CAPTURE PHOTO
+                </button>
+                <button
+                  onClick={stopCameraStream}
+                  className="w-full min-h-[48px] py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all"
+                >
+                  CLOSE CAMERA
+                </button>
+              </div>
+            )}
+
+            {capturedFace && (
+              <div className="space-y-2">
+                <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl">
+                  <p className="text-green-300 text-sm font-semibold">✅ Photo captured successfully!</p>
+                </div>
+                <button
+                  onClick={capturePhoto}
+                  className="w-full min-h-[48px] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
+                >
+                  RETAKE PHOTO
+                </button>
+              </div>
+            )}
+
+            {cameraError && (
+              <div className="space-y-2">
+                <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-xl">
+                  <p className="text-red-400 text-sm font-semibold mb-1">❌ Camera Error</p>
+                  <p className="text-red-300 text-xs">{cameraError}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setCameraError(null);
+                    startCamera();
+                  }}
+                  className="w-full min-h-[48px] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
+                >
+                  TRY AGAIN
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* FORM SECTION - RIGHT SIDE */}
           <div className="bg-white/5 p-6 sm:p-8 rounded-3xl border border-white/10 backdrop-blur-md">
             <h2 className="text-[#00d1ff] mb-6 font-bold text-lg">📋 ATTENDANCE DETAILS</h2>
             
@@ -423,6 +619,7 @@ const StudentPortal = () => {
               />
               <p className="text-gray-500 text-xs mt-1">⚠️ This mobile number can only be used on one device</p>
             </div>
+            
             <div className="mb-6 bg-black/30 p-4 rounded-xl border border-[#00d1ff]/20">
               <label className="text-gray-400 text-sm font-semibold mb-2 block">SUBMISSION TIME</label>
               <div className="text-[#00d1ff] text-xl font-mono font-bold">
@@ -443,7 +640,13 @@ const StudentPortal = () => {
             {status === 'ready' && (
               <button 
                 onClick={handleSubmitAttendance}
-                className={`w-full min-h-[48px] py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 bg-[#00ffa3] text-black hover:shadow-[0_0_20px_rgba(0,255,163,0.4)]`}
+                disabled={!capturedFace}
+                className={`w-full min-h-[48px] py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  capturedFace
+                    ? 'bg-[#00ffa3] text-black hover:shadow-[0_0_20px_rgba(0,255,163,0.4)]'
+                    : 'bg-gray-600 text-gray-300 cursor-not-allowed opacity-50'
+                }`}
+                title={!capturedFace ? 'Please capture your face photo first' : ''}
               >
                 🚀 SUBMIT ATTENDANCE
               </button>
@@ -626,8 +829,14 @@ const StudentPortal = () => {
               <span className="text-[#00d1ff] font-bold">•</span>
               <span>Your attendance data is encrypted and secure</span>
             </li>
+            <li className="flex gap-3">
+              <span className="text-[#00d1ff] font-bold">•</span>
+              <span><span className="font-semibold text-[#ff6b35]">📸 FACE CAPTURE</span>: Use the <span className="text-[#00d1ff]">PHOTO VERIFICATION section on the LEFT</span> side. Click <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded">OPEN CAMERA</span>, position your face in the guide, click <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded">CAPTURE PHOTO</span>, then click <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded">SUBMIT ATTENDANCE</span> on the right. Ensure good lighting and face visibility.</span>
+            </li>
           </ul>
         </div>
+
+
       </div>
       )}
     </div>
