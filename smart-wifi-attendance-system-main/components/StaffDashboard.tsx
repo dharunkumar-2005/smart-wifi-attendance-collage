@@ -298,14 +298,7 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                 <button
                   type="submit"
                   className="w-full bg-gradient-to-r from-[#00d1ff] to-[#0099ff] text-black font-bold py-3 rounded-xl hover:shadow-[0_0_30px_rgba(0,209,255,0.4)] transition-all transform hover:scale-105"
-                >// Line 300-la irukkura button-ah ippadi maathunga:
-<button 
-  type="submit"
-  onClick={() => alert("⚠️ Staff Portal Error: Photos are NOT being saved to the database. Reason: Root Directory misconfiguration in Vercel. Please re-verify the build path.")}
-  className="w-full bg-gradient-to-r from-[#00d1ff] to-[#0099ff] text-black font-bold py-3 rounded-xl transition-all"
->
-  UNLOCK DASHBOARD
-</button>
+                >
                   UNLOCK DASHBOARD
                 </button>
               </form>
