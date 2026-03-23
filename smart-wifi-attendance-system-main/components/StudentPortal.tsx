@@ -260,17 +260,31 @@ const StudentPortal = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a2342] via-[#05050a] to-[#1a0033] text-white p-4 sm:p-6 font-sans">
-      <h1 className="text-center text-2xl font-bold text-[#00d1ff] mb-8 tracking-widest">STUDENT PORTAL</h1>
-      
-
-      {/* MAIN PORTAL - Always visible now */}
-      {true && (
-      <div className="max-w-7xl mx-auto">
-        {/* Two Column Layout: Camera (LEFT) + Form (RIGHT) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          
-          {/* CAMERA SECTION - LEFT SIDE */}
-          <div className="bg-gradient-to-b from-[#00d1ff]/10 to-transparent p-6 sm:p-8 rounded-3xl border border-[#00d1ff]/30 backdrop-blur-md">
+      {!isNetworkAuthorized ? (
+        <div style={{position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0a2342, #05050a, #1a0033)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 9999}}>
+          <div style={{textAlign: 'center'}}>
+            <h1 style={{fontSize: '4rem', color: '#ff3333', marginBottom: '1rem', fontWeight: 'bold', textShadow: '0 0 20px rgba(255, 51, 51, 0.5)'}}>
+              ⚠️ ACCESS NEEDED
+            </h1>
+            <p style={{fontSize: '1.5rem', marginBottom: '2rem', color: '#fff'}}>
+              You are not connected to the College Hotspot
+            </p>
+            <div style={{background: '#1a1a2e', padding: '2rem', borderRadius: '1rem', border: '2px solid #00d1ff', marginBottom: '2rem', maxWidth: '500px'}}>
+              <p style={{color: '#00d1ff', fontWeight: 'bold', marginBottom: '0.5rem'}}>Step 1: Connect to Hotspot</p>
+              <p style={{color: '#fff', fontSize: '1.2rem', marginBottom: '1rem', fontWeight: 'bold'}}>KNCET Official Hotspot</p>
+              <p style={{color: '#ffaa00', fontSize: '0.9rem'}}>Then refresh this page</p>
+            </div>
+            <p style={{color: '#999', fontSize: '0.9rem'}}>Contact admin if you need help</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-center text-2xl font-bold text-[#00d1ff] mb-8 tracking-widest">STUDENT PORTAL</h1>
+          <div className="max-w-7xl mx-auto">
+            {/* Two Column Layout: Camera (LEFT) + Form (RIGHT) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* CAMERA SECTION - LEFT SIDE */}
+              <div className="bg-gradient-to-b from-[#00d1ff]/10 to-transparent p-6 sm:p-8 rounded-3xl border border-[#00d1ff]/30 backdrop-blur-md">
             <div className="flex items-center gap-2 mb-4">
               <Camera size={24} className="text-[#00d1ff]" />
               <h2 className="text-[#00d1ff] font-bold text-lg">PHOTO VERIFICATION</h2>
@@ -485,7 +499,8 @@ const StudentPortal = () => {
         </div>
 
 
-      </div>
+          </div>
+        </>
       )}
     </div>
   );
