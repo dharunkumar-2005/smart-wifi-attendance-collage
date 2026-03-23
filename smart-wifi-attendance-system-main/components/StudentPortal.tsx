@@ -51,38 +51,96 @@ const StudentPortal = () => {
       console.log('🔍 Checking hotspot connection...');
       setStatus('checking');
 
-      // 2. THE IMAGE TRICK: This bypasses Vercel's HTTPS security block
-      const img = new Image();
-      const HOTSPOT_IP = '192.168.137.1'; // CHANGE THIS if your IP is different!
-      const imageUrl = `http://${HOTSPOT_IP}:5173/favicon.ico?t=${Date.now()}`;
-      
-      console.log('📡 Trying to load from:', imageUrl);
-      img.src = imageUrl;
+      // List of possible hotspot IPs to try
+      const possibleHotspotIPs = [
+        '192.168.137.1',  // Windows Phone Hotspot (most common)
+        '192.168.5.1',    // Alternative Windows hotspot
+        '192.168.1.1',    // Common router
+        '10.0.0.1',       // Some device hotspots
+        '192.168.0.1',    // Default gateway
+      ];
 
-      img.onload = () => {
-        // If image loads, they are on your hotspot!
-        console.log('✅ Hotspot detected - access granted!');
-        setIsNetworkAuthorized(true);
-        setStatus('idle');
+      // List of endpoints to try
+      const endpoints = [
+        '/favicon.ico',
+        '/index.html',
+        '/',
+      ];
+
+      let successCount = 0;
+      let attemptCount = 0;
+      const totalAttempts = possibleHotspotIPs.length * endpoints.length;
+
+      const checkEndpoint = (ip, endpoint) => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          const imageUrl = `http://${ip}:5173${endpoint}?t=${Date.now()}`;
+          
+          console.log(`📡 Trying: ${imageUrl}`);
+          
+          const timeout = setTimeout(() => {
+            console.log(`⏱️ Timeout on ${imageUrl}`);
+            attemptCount++;
+            resolve(false);
+          }, 1000);
+
+          img.onload = () => {
+            clearTimeout(timeout);
+            console.log(`✅ Success on ${imageUrl}`);
+            successCount++;
+            attemptCount++;
+            resolve(true);
+          };
+
+          img.onerror = () => {
+            clearTimeout(timeout);
+            console.log(`❌ Failed on ${imageUrl}`);
+            attemptCount++;
+            resolve(false);
+          };
+
+          img.src = imageUrl;
+        });
       };
 
-      img.onerror = () => {
-        // If image fails (Mixed content or not on hotspot), block them!
-        console.log('❌ Not on hotspot - access denied');
-        setIsNetworkAuthorized(false);
-        setStatus('error');
-      };
-
-      // 3. Safety Timeout (3 seconds)
-      const timeout = setTimeout(() => {
-        if (!img.complete) {
-          console.log('⏱️ Timeout - assuming not on hotspot');
+      // Try all combinations with a global timeout
+      const globalTimeout = setTimeout(() => {
+        if (successCount > 0) {
+          console.log(`✅ Hotspot detected (${successCount} successful checks) - access granted!`);
+          setIsNetworkAuthorized(true);
+          setStatus('idle');
+        } else {
+          console.log('❌ No hotspot detected after timeout - access denied');
           setIsNetworkAuthorized(false);
           setStatus('error');
         }
-      }, 3000);
+      }, 5000);
 
-      return () => clearTimeout(timeout);
+      // Start checking all endpoints in parallel
+      (async () => {
+        const promises = [];
+        for (const ip of possibleHotspotIPs) {
+          for (const endpoint of endpoints) {
+            promises.push(checkEndpoint(ip, endpoint));
+          }
+        }
+
+        await Promise.all(promises);
+
+        clearTimeout(globalTimeout);
+
+        if (successCount > 0) {
+          console.log(`✅ Hotspot detected (${successCount} successful checks) - access granted!`);
+          setIsNetworkAuthorized(true);
+          setStatus('idle');
+        } else {
+          console.log('❌ No hotspot detected - access denied');
+          setIsNetworkAuthorized(false);
+          setStatus('error');
+        }
+      })();
+
+      return () => clearTimeout(globalTimeout);
     };
 
     checkHotspot();
@@ -281,6 +339,36 @@ const StudentPortal = () => {
               <p style={{color: '#fff', fontSize: '1.2rem', marginBottom: '1rem', fontWeight: 'bold'}}>KNCET Official Hotspot</p>
               <p style={{color: '#ffaa00', fontSize: '0.9rem'}}>Then refresh this page</p>
             </div>
+            <button 
+              onClick={() => {
+                console.log('🔄 Manual reconnect attempt');
+                setStatus('checking');
+                // Retry the hotspot check
+                const retry = setInterval(() => {
+                  const testImg = new Image();
+                  const testUrl = `http://192.168.137.1:5173/favicon.ico?t=${Date.now()}`;
+                  
+                  testImg.onload = () => {
+                    clearInterval(retry);
+                    setIsNetworkAuthorized(true);
+                    setStatus('idle');
+                    console.log('✅ Hotspot connection successful!');
+                  };
+                  
+                  testImg.onerror = () => {
+                    // Keep retrying
+                  };
+                  
+                  testImg.src = testUrl;
+                }, 500);
+                
+                // Stop trying after 10 seconds
+                setTimeout(() => clearInterval(retry), 10000);
+              }}
+              style={{background: '#00d1ff', color: '#000', padding: '1rem 2rem', borderRadius: '0.5rem', border: 'none', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginBottom: '1rem'}}
+            >
+              🔄 Try Again / Connect Now
+            </button>
             <p style={{color: '#999', fontSize: '0.9rem'}}>Contact admin if you need help</p>
           </div>
         </div>
