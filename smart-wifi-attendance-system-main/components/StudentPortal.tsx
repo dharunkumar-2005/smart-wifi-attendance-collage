@@ -40,7 +40,8 @@ const StudentPortal = () => {
 
   // Allowed Networks - Local Network Gateway
   const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1'];
-  const ALLOWED_HOTSPOT_IP = '192.168.137.1'; // Laptop's Mobile Hotspot IP
+  // Allow both hotspot IPs
+  const HOTSPOT_IPS = ['192.168.137.1', '192.168.5.1'];
 
   // Fast Network Validation useEffect - NO EXTERNAL API CALLS
   React.useEffect(() => {
@@ -48,7 +49,7 @@ const StudentPortal = () => {
       try {
         // Get hostname/IP from the URL
         const { hostname } = window.location;
-        
+
         // Check 1: Is it localhost?
         if (LOCALHOST_HOSTNAMES.includes(hostname)) {
           setIsNetworkAuthorized(true);
@@ -57,8 +58,8 @@ const StudentPortal = () => {
           return;
         }
 
-        // Check 2: Is it the allowed hotspot IP?
-        if (hostname === ALLOWED_HOTSPOT_IP) {
+        // Check 2: Is it one of the allowed hotspot IPs?
+        if (HOTSPOT_IPS.some(ip => hostname.includes(ip))) {
           setIsNetworkAuthorized(true);
           setStatus('idle');
           setUserIP(hostname);
