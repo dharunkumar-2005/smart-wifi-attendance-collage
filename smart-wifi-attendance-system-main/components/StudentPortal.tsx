@@ -9,6 +9,7 @@ import { Camera, X, Check } from 'lucide-react';
 const db = getDatabase(app);
 
 const StudentPortal = () => {
+    const [isNetworkAuthorized, setIsNetworkAuthorized] = useState(false);
   const [name, setName] = useState('');
   const [regNo, setRegNo] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
@@ -37,7 +38,48 @@ const StudentPortal = () => {
   const TEMPLATE_ID = 'template_8l5je3k';
   const PUBLIC_KEY = 'lY_7i4-3Fv9oPY7Oi';
 
-  // Network validation removed
+  useEffect(() => {
+    const checkHotspot = () => {
+      // 1. Bypass check if opening directly on the laptop
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        setIsNetworkAuthorized(true);
+        setStatus('idle');
+        return;
+      }
+
+      setStatus('checking');
+
+      // 2. THE IMAGE TRICK: This bypasses Vercel's HTTPS security block
+      const img = new Image();
+      // We try to grab the Vite favicon from your laptop server
+      // Added a timestamp (?t=...) to stop the browser from caching the result
+      img.src = `http://192.168.137.1:5173/favicon.ico?t=${Date.now()}`;
+
+      img.onload = () => {
+        // If image loads, they are on your hotspot!
+        setIsNetworkAuthorized(true);
+        setStatus('idle');
+      };
+
+      img.onerror = () => {
+        // If image fails (Mixed content or not on hotspot), block them!
+        setIsNetworkAuthorized(false);
+        setStatus('error');
+      };
+
+      // 3. Safety Timeout (3 seconds)
+      const timeout = setTimeout(() => {
+        if (!img.complete) {
+          setIsNetworkAuthorized(false);
+          setStatus('error');
+        }
+      }, 3000);
+
+      return () => clearTimeout(timeout);
+    };
+
+    checkHotspot();
+  }, []);
 
   // Device ID logic removed
 
