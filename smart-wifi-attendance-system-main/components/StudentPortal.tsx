@@ -42,27 +42,33 @@ const StudentPortal = () => {
     const checkHotspot = () => {
       // 1. Bypass check if opening directly on the laptop
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.log('✅ Localhost detected - access granted');
         setIsNetworkAuthorized(true);
         setStatus('idle');
         return;
       }
 
+      console.log('🔍 Checking hotspot connection...');
       setStatus('checking');
 
       // 2. THE IMAGE TRICK: This bypasses Vercel's HTTPS security block
       const img = new Image();
-      // We try to grab the Vite favicon from your laptop server
-      // Added a timestamp (?t=...) to stop the browser from caching the result
-      img.src = `http://192.168.137.1:5173/favicon.ico?t=${Date.now()}`;
+      const HOTSPOT_IP = '192.168.137.1'; // CHANGE THIS if your IP is different!
+      const imageUrl = `http://${HOTSPOT_IP}:5173/favicon.ico?t=${Date.now()}`;
+      
+      console.log('📡 Trying to load from:', imageUrl);
+      img.src = imageUrl;
 
       img.onload = () => {
         // If image loads, they are on your hotspot!
+        console.log('✅ Hotspot detected - access granted!');
         setIsNetworkAuthorized(true);
         setStatus('idle');
       };
 
       img.onerror = () => {
         // If image fails (Mixed content or not on hotspot), block them!
+        console.log('❌ Not on hotspot - access denied');
         setIsNetworkAuthorized(false);
         setStatus('error');
       };
@@ -70,6 +76,7 @@ const StudentPortal = () => {
       // 3. Safety Timeout (3 seconds)
       const timeout = setTimeout(() => {
         if (!img.complete) {
+          console.log('⏱️ Timeout - assuming not on hotspot');
           setIsNetworkAuthorized(false);
           setStatus('error');
         }
