@@ -12,15 +12,14 @@ const StudentPortal = () => {
   const [name, setName] = useState('');
   const [regNo, setRegNo] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [status, setStatus] = useState<'idle' | 'verifying' | 'mismatch' | 'mobile_mismatch' | 'otp_pending' | 'ready' | 'submitted' | 'duplicate_submission' | 'device_locked' | 'checking_network' | 'unauthorized_network' | 'camera_capture' | 'camera_error'>('checking_network');
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'ready' | 'submitted' | 'camera_capture' | 'camera_error'>('idle');
   const [otpInput, setOtpInput] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [alreadySubmittedError, setAlreadySubmittedError] = useState<string | null>(null);
-  const [isNetworkAuthorized, setIsNetworkAuthorized] = useState<boolean>(false);
-  const [userIP, setUserIP] = useState<string | null>(null);
+  // Access checks removed
 
   // Camera-related state
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -38,226 +37,16 @@ const StudentPortal = () => {
   const TEMPLATE_ID = 'template_8l5je3k';
   const PUBLIC_KEY = 'lY_7i4-3Fv9oPY7Oi';
 
-  // Allowed Networks - Local Network Gateway
-  const LOCALHOST_HOSTNAMES = ['localhost', '127.0.0.1', '::1'];
-  // Allow both hotspot IPs
-  const HOTSPOT_IPS = ['192.168.137.1', '192.168.5.1'];
+  // Network validation removed
 
-  // Fast Network Validation useEffect - NO EXTERNAL API CALLS
-  React.useEffect(() => {
-    const validateNetwork = () => {
-      try {
-        // Get hostname/IP from the URL
-        const { hostname } = window.location;
-
-        // Check 1: Is it localhost?
-        if (LOCALHOST_HOSTNAMES.includes(hostname)) {
-          setIsNetworkAuthorized(true);
-          setStatus('idle');
-          setUserIP('localhost');
-          return;
-        }
-
-        // Check 2: Is it one of the allowed hotspot IPs?
-        if (HOTSPOT_IPS.some(ip => hostname.includes(ip))) {
-          setIsNetworkAuthorized(true);
-          setStatus('idle');
-          setUserIP(hostname);
-          return;
-        }
-
-        // Check 3: Not authorized - deny access
-        setIsNetworkAuthorized(false);
-        setStatus('unauthorized_network');
-        setUserIP(hostname);
-      } catch (error) {
-        // If any error occurs, deny access for security
-        console.error('Network validation error:', error);
-        setIsNetworkAuthorized(false);
-        setStatus('unauthorized_network');
-        setUserIP('unknown');
-      }
-    };
-
-    // Run immediately on component mount (synchronous, very fast)
-    validateNetwork();
-  }, []);
-
-  // Device ID function (One device per mobile)
-  const getDeviceId = React.useCallback(() => {
-    let id = localStorage.getItem('attendance_device_id');
-    if (!id) {
-      id = 'dev_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('attendance_device_id', id);
-    }
-    return id;
-  }, []);
+  // Device ID logic removed
 
   const handleVerify = React.useCallback(async () => {
     if (!name || !regNo || !mobileNumber) return alert("Please fill Name, Reg Number, and Mobile Number");
-    
-    // Validate mobile number format (10 digits)
-    if (!/^\d{10}$/.test(mobileNumber.replace(/\D/g, ''))) {
-      return alert("Please enter a valid 10-digit mobile number");
-    }
+    setStatus('ready');
+  }, [name, regNo, mobileNumber]);
 
-    setStatus('verifying');
-    
-    const formattedReg = regNo.toUpperCase().trim();
-    const formattedMobile = mobileNumber.replace(/\D/g, ''); // Remove non-numeric characters
-    const currentDeviceId = getDeviceId();
-
-    try {
-      // STRICT: Check if this device already has a DIFFERENT mobile number registered
-      const deviceCheckRef = ref(db, `device_mobile/${currentDeviceId}`);
-      const deviceCheckSnap = await get(deviceCheckRef);
-
-      if (deviceCheckSnap.exists()) {
-        const registeredMobile = deviceCheckSnap.val().mobileNumber;
-        if (registeredMobile !== formattedMobile) {
-          alert("❌ ERROR: This device can only be used with mobile number: " + registeredMobile + "\n\nOnly ONE mobile number per device is allowed.");
-          setStatus('mobile_mismatch');
-          return;
-        }
-      }
-
-      // Check if mobile number is already registered to a different device
-      const mobileCheckRef = ref(db, `mobile_devices/${formattedMobile}`);
-      const mobileCheckSnap = await get(mobileCheckRef);
-
-      if (mobileCheckSnap.exists()) {
-        const mobileData = mobileCheckSnap.val();
-        // If mobile is registered and device ID is different, block access
-        if (mobileData.deviceId !== currentDeviceId) {
-          alert("❌ ERROR: This mobile number is already registered on another device.\n\nContact admin to change device.");
-          setStatus('mobile_mismatch');
-          return;
-        }
-      }
-
-      // Check student registration
-      const studentRef = ref(db, `students/${formattedReg}`);
-      const studentSnap = await get(studentRef);
-
-      if (!studentSnap.exists()) {
-        alert("FAILURE: Student not registered!");
-        setStatus('idle');
-        return;
-      }
-
-      const studentData = studentSnap.val();
-      
-      // Check if student has a different mobile number registered
-      if (studentData.mobileNumber && studentData.mobileNumber !== formattedMobile) {
-        alert("❌ ERROR: This student registration is linked to a different mobile number.\n\nPlease use the correct mobile number.");
-        setStatus('idle');
-        return;
-      }
-
-      // Device Binding Logic
-      if (!studentData.deviceId) {
-        // First time: Register both device and mobile number
-        await update(studentRef, { 
-          deviceId: currentDeviceId,
-          mobileNumber: formattedMobile
-        });
-        // Also register in mobile_devices for quick lookup
-        await set(mobileCheckRef, {
-          regNo: formattedReg,
-          deviceId: currentDeviceId,
-          mobileNumber: formattedMobile,
-          registeredAt: new Date().toISOString()
-        });
-        // Register device to mobile mapping
-        await set(deviceCheckRef, {
-          mobileNumber: formattedMobile,
-          regNo: formattedReg,
-          registeredAt: new Date().toISOString()
-        });
-        setStatus('ready');
-      } else if (studentData.deviceId === currentDeviceId) {
-        // Same device, same mobile - allow
-        setStatus('ready');
-      } else {
-        // Device mismatch - trigger OTP flow
-        setStatus('mismatch');
-      }
-    } catch (err) {
-      alert("System Connection Error");
-      console.error(err);
-      setStatus('idle');
-    }
-  }, [name, regNo, mobileNumber, getDeviceId]);
-
-  // Staff-ku OTP anupra function
-  const sendOtpToAdmin = React.useCallback(async () => {
-    setSendingOtp(true);
-    
-    try {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(otp);
-      
-      const formattedMobile = mobileNumber.replace(/\D/g, '');
-      
-      // Send email using the same pattern as App.tsx
-      const response = await emailjs.send(
-        SERVICE_ID, 
-        TEMPLATE_ID, 
-        {
-          reg_no: regNo,
-          mobile_number: formattedMobile,
-          otp_code: otp,
-          message: `DEVICE CHANGE REQUEST: Student ${name} (${regNo}) with mobile +91${formattedMobile} tried using another phone.`,
-          student_name: name
-        },
-        PUBLIC_KEY
-      );
-      
-      // Check if response indicates success
-      if (response.status === 200) {
-        alert("✅ OTP sent successfully! Check admin email.");
-        setStatus('otp_pending');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      alert(`❌ Failed to send OTP: ${errorMessage}\n\nNote: Template must be configured in EmailJS dashboard with recipient: dharunkumar0011@gmail.com`);
-      console.error('OTP Send Error:', error);
-    } finally {
-      setSendingOtp(false);
-    }
-  }, [name, regNo, mobileNumber, SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY]);
-
-  const verifyOtp = React.useCallback(async () => {
-    if (otpInput === generatedOtp) {
-      const formattedReg = regNo.toUpperCase().trim();
-      const formattedMobile = mobileNumber.replace(/\D/g, '');
-      const currentDeviceId = getDeviceId();
-
-      try {
-        // Update student with new device ID
-        await update(ref(db, `students/${formattedReg}`), { 
-          deviceId: currentDeviceId,
-          mobileNumber: formattedMobile
-        });
-
-        // Update mobile_devices entry with new device ID
-        await set(ref(db, `mobile_devices/${formattedMobile}`), {
-          regNo: formattedReg,
-          deviceId: currentDeviceId,
-          mobileNumber: formattedMobile,
-          registeredAt: new Date().toISOString()
-        });
-
-        alert("✅ New Device Linked Successfully!");
-        setStatus('ready');
-      } catch (error) {
-        alert("Failed to update device. Please try again.");
-        console.error(error);
-      }
-    } else {
-      alert("Invalid OTP!");
-    }
-  }, [otpInput, generatedOtp, regNo, mobileNumber, getDeviceId]);
+  // OTP/admin device change logic removed
 
   const [readyToActivate, setReadyToActivate] = React.useState(false);
 
@@ -322,8 +111,8 @@ const StudentPortal = () => {
 
   const capturePhoto = React.useCallback(() => {
     try {
-      const currentDeviceId = getDeviceId();
-      const faceData = cameraService.captureFace(currentDeviceId);
+      // Device ID logic removed
+      const faceData = cameraService.captureFace("");
 
       if (faceData) {
         setCapturedFace(faceData);
@@ -338,7 +127,7 @@ const StudentPortal = () => {
     } catch (error) {
       setCameraError('Error capturing face: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
-  }, [getDeviceId]);
+  }, []);
 
   // Cleanup camera on component unmount
   useEffect(() => {
@@ -392,7 +181,7 @@ const StudentPortal = () => {
         mobileNumber: formattedMobile,
         time: new Date().toLocaleTimeString(),
         date: today,
-        deviceId: getDeviceId(),
+        // deviceId removed
         status: 'Verified',
         faceVerified: true,
         cameraTimestamp: capturedFace.timestamp
@@ -417,7 +206,7 @@ const StudentPortal = () => {
       console.error('❌ Submission error:', err);
       alert(`Submission failed: ${errorMsg}`);
     }
-  }, [name, regNo, mobileNumber, getDeviceId, capturedFace]);
+  }, [name, regNo, mobileNumber, capturedFace]);
 
   // Update time every second
   React.useEffect(() => {
@@ -431,65 +220,9 @@ const StudentPortal = () => {
     <div className="min-h-screen bg-gradient-to-br from-[#0a2342] via-[#05050a] to-[#1a0033] text-white p-4 sm:p-6 font-sans">
       <h1 className="text-center text-2xl font-bold text-[#00d1ff] mb-8 tracking-widest">STUDENT PORTAL</h1>
       
-      {/* NETWORK AUTHORIZATION CHECK */}
-      {status === 'unauthorized_network' && (
-        <div className="min-h-screen w-full flex items-center justify-center fixed inset-0 bg-gradient-to-br from-[#0a2342] via-[#05050a] to-[#1a0033] z-50">
-          <div className="text-center px-6">
-            {/* Large Red Stamp Effect */}
-            <div className="mb-8 relative">
-              <div className="absolute inset-0 bg-red-600 opacity-10 blur-3xl rounded-full"></div>
-              <div className="relative inline-block">
-                <div className="border-4 border-red-600 px-12 py-8 rounded-2xl transform -rotate-3">
-                  <h2 className="text-7xl font-black text-red-600 tracking-widest drop-shadow-2xl" style={{
-                    textShadow: '0 4px 15px rgba(220, 38, 38, 0.5), 0 0 30px rgba(220, 38, 38, 0.3)',
-                    letterSpacing: '0.15em'
-                  }}>
-                    ACCESS
-                  </h2>
-                  <h2 className="text-7xl font-black text-red-600 tracking-widest drop-shadow-2xl" style={{
-                    textShadow: '0 4px 15px rgba(220, 38, 38, 0.5), 0 0 30px rgba(220, 38, 38, 0.3)',
-                    letterSpacing: '0.15em'
-                  }}>
-                    DENIED
-                  </h2>
-                </div>
-              </div>
-            </div>
 
-            {/* Message */}
-            <div className="space-y-6 max-w-2xl">
-              <div className="bg-red-600/20 border-2 border-red-500 rounded-2xl p-8 backdrop-blur-md">
-                <p className="text-red-300 text-2xl font-bold mb-4">
-                  🚫 Unauthorized Network Detected
-                </p>
-                <p className="text-red-200 text-lg mb-4">
-                  This portal can only be accessed from the authorized network.
-                </p>
-                <div className="border-t border-red-500/30 pt-6 mt-6">
-                  <p className="text-amber-300 font-semibold text-lg mb-3">
-                    ⚠️ To Access This Portal:
-                  </p>
-                  <p className="text-white text-xl font-bold mb-2">
-                    Connect to: <span className="text-[#00d1ff]">KNCET Official Hotspot</span>
-                  </p>
-                  <p className="text-gray-300 text-sm mt-4">
-                    Your IP: <span className="font-mono text-red-400">{userIP || 'Detecting...'}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-black/40 border border-red-500/20 rounded-xl p-6">
-                <p className="text-gray-400 text-sm">
-                  Contact your administrator if you believe this is an error.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MAIN PORTAL - Only visible if network is authorized */}
-      {isNetworkAuthorized && status !== 'unauthorized_network' && (
+      {/* MAIN PORTAL - Always visible now */}
+      {true && (
       <div className="max-w-7xl mx-auto">
         {/* Two Column Layout: Camera (LEFT) + Form (RIGHT) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -637,7 +370,6 @@ const StudentPortal = () => {
                 disabled={status !== 'idle' && status !== 'ready'}
                 maxLength="15"
               />
-              <p className="text-gray-500 text-xs mt-1">⚠️ This mobile number can only be used on one device</p>
             </div>
             
             <div className="mb-6 bg-black/30 p-4 rounded-xl border border-[#00d1ff]/20">
@@ -672,152 +404,6 @@ const StudentPortal = () => {
               </button>
             )}
 
-            {status === 'mismatch' && (
-              <div className="space-y-4">
-                <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
-                  <p className="text-red-400 font-semibold">⚠️ Device Mismatch!</p>
-                  <p className="text-red-300 text-sm mt-1">Use your registered mobile device.</p>
-                </div>
-                <button 
-                  onClick={sendOtpToAdmin}
-                  disabled={sendingOtp}
-                  className={`w-full min-h-[48px] py-3 font-bold rounded-xl transition-all ${
-                    sendingOtp
-                      ? 'bg-gray-600 text-gray-300 cursor-not-allowed opacity-70'
-                      : 'bg-amber-500 text-black hover:bg-amber-600'
-                  }`}
-                >
-                  {sendingOtp ? '⏳ SENDING OTP...' : '📧 REQUEST DEVICE CHANGE'}
-                </button>
-              </div>
-            )}
-
-            {status === 'mobile_mismatch' && (
-              <div className="space-y-4">
-                <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
-                  <p className="text-red-400 font-semibold">❌ Mobile Number Already Registered!</p>
-                  <p className="text-red-300 text-sm mt-2">
-                    This mobile number (<span className="font-mono font-bold">{mobileNumber.slice(-2)}</span>) is already linked to another device.
-                  </p>
-                  <p className="text-red-300 text-sm mt-2">
-                    Each mobile number can only be used on ONE device. To use a different mobile device, please contact the admin with your registration number.
-                  </p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setStatus('idle');
-                    setMobileNumber('');
-                  }}
-                  className="w-full min-h-[48px] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
-                >
-                  🔄 TRY AGAIN WITH DIFFERENT MOBILE
-                </button>
-              </div>
-            )}
-
-            {status === 'otp_pending' && (
-              <div className="space-y-4">
-                <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl">
-                  <p className="text-amber-300 font-semibold">⏳ OTP Sent to Admin</p>
-                  <p className="text-amber-200 text-sm mt-1">Check admin email for verification code</p>
-                </div>
-                <input 
-                  type="text" 
-                  placeholder="Enter OTP from Admin" 
-                  className="w-full bg-black/50 border border-amber-500/50 p-4 rounded-xl focus:border-amber-400 outline-none"
-                  value={otpInput} 
-                  onChange={(e) => setOtpInput(e.target.value)}
-                />
-                <button
-                  onClick={verifyOtp}
-                  className="w-full min-h-[48px] py-3 bg-[#00ffa3] text-black font-bold rounded-xl hover:shadow-[0_0_20px_rgba(0,255,163,0.4)]"
-                >
-                  ✓ UNLOCK DEVICE
-                </button>
-              </div>
-            )}
-
-            {status === 'device_locked' && (
-              <div className="space-y-4">
-                <div className="bg-red-600/20 border border-red-500/50 p-4 rounded-xl">
-                  <p className="text-red-300 font-bold text-lg">🔒 DEVICE LOCKED</p>
-                  <p className="text-red-300 text-sm mt-3">
-                    <span className="font-semibold">Access Denied:</span> You have already submitted attendance from this device.
-                  </p>
-                  <p className="text-red-300 text-sm mt-3">
-                    <span className="font-semibold">Rule: One Device = One Submission</span>
-                  </p>
-                  <p className="text-red-300 text-sm mt-3">
-                    This device cannot submit attendance again. Each device can only mark attendance once and permanently.
-                  </p>
-                  <p className="text-red-400 text-sm mt-3 font-semibold">
-                    📞 To submit from a different device, contact your admin with your registration number.
-                  </p>
-                </div>
-                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl">
-                  <p className="text-red-300 text-xs">
-                    <span className="font-semibold">Device Fingerprint:</span> {getDeviceId()}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setStatus('idle');
-                    setAlreadySubmittedError(null);
-                    setName('');
-                    setRegNo('');
-                    setMobileNumber('');
-                  }}
-                  className="w-full min-h-[48px] py-3 bg-gray-600 text-white font-bold rounded-xl hover:bg-gray-700 transition-all"
-                >
-                  ↩️ BACK TO HOME
-                </button>
-              </div>
-            )}
-
-            {status === 'duplicate_submission' && (
-              <div className="space-y-4">
-                <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
-                  <p className="text-red-400 font-semibold">❌ Attendance Already Submitted!</p>
-                  <p className="text-red-300 text-sm mt-2">
-                    This device has already submitted attendance today. One Mobile = One Attendance per day.
-                  </p>
-                  <p className="text-red-300 text-sm mt-2">
-                    To submit attendance from a different device, please contact the admin with your registration number.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button 
-                    onClick={() => {
-                      setStatus('idle');
-                      setSubmissionError(null);
-                      setName('');
-                      setRegNo('');
-                      setMobileNumber('');
-                    }}
-                    className="w-full min-h-[48px] py-3 bg-gray-600 text-white font-bold rounded-xl hover:bg-gray-700 transition-all"
-                  >
-                    🔄 START OVER
-                  </button>
-                  <button 
-                    onClick={() => {
-                      localStorage.removeItem('attendance_submitted');
-                      setStatus('idle');
-                      setSubmissionError(null);
-                      setName('');
-                      setRegNo('');
-                      setMobileNumber('');
-                      alert("⚠️ Submission flag cleared. Please use this responsibly.");
-                    }}
-                    className="w-full min-h-[48px] py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 transition-all"
-                  >
-                    🔐 CLEAR & RETRY
-                  </button>
-                </div>
-                <p className="text-gray-400 text-xs text-center mt-2">
-                  Contact admin if you need to submit from a different device.
-                </p>
-              </div>
-            )}
           </div>
         </div>
 
