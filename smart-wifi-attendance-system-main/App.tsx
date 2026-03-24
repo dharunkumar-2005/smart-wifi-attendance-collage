@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDatabase, ref, onValue, off, set, remove, update } from 'firebase/database'; // 'update' add pannirukaen
+import { getDatabase, ref, onValue, off, set, remove, update, get } from 'firebase/database'; // 'update' add pannirukaen
 import { app } from './components/firebase';
 import emailjs from '@emailjs/browser'; 
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
