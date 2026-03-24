@@ -1,7 +1,8 @@
 import { emailService } from '../services/emailService';
 import React, { useState, useMemo, useEffect } from 'react';
-import { LogOut, Trash2, Plus, Search, Mail, Download, Users, AlertTriangle, Lock, Settings, Unlock } from 'lucide-react';
+import { LogOut, Trash2, Plus, Search, Mail, Download, Users, AlertTriangle, Lock, Settings, Unlock, Image } from 'lucide-react';
 import { MemoizedPresentItem, MemoizedAbsentItem, MemoizedStudentListItem } from './MemoizedListItems';
+import PhotoModal from './PhotoModal';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
 import { validatePasswordStrength, hashPassword, comparePassword } from '../utils/passwordUtils';
@@ -37,8 +38,23 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
   onWipeDevice
 }) => {
   const [view, setView] = useState('dashboard');
-  // Photo display removed - photos are no longer saved to database
   
+  // Photo Modal State
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string | null; studentName: string; regNumber: string }>({
+    url: null,
+    studentName: '',
+    regNumber: ''
+  });
+  
+  const openPhotoModal = (photoUrl: string | undefined, studentName: string, regNumber: string) => {
+    setSelectedPhoto({
+      url: photoUrl || null,
+      studentName,
+      regNumber
+    });
+    setIsPhotoModalOpen(true);
+  };
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -450,6 +466,7 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Reg No</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Mobile</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Time</th>
+                      <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Photo</th>
                       <th className="pb-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Actions</th>
                     </tr>
                   </thead>
@@ -461,6 +478,19 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
                           <td className="py-4 text-white">{record.data.regNo}</td>
                           <td className="py-4 text-white">{record.data.mobileNumber}</td>
                           <td className="py-4 text-white">{record.data.time}</td>
+                          <td className="py-4">
+                            {record.data.photo ? (
+                              <button
+                                onClick={() => openPhotoModal(record.data.photo, record.data.name, record.data.regNo)}
+                                className="flex items-center gap-2 px-3 py-1 bg-[#00d1ff]/20 border border-[#00d1ff] text-[#00d1ff] rounded-lg text-xs font-bold hover:bg-[#00d1ff]/40 transition-all"
+                              >
+                                <Image size={14} />
+                                View
+                              </button>
+                            ) : (
+                              <span className="text-gray-500 text-xs">No photo</span>
+                            )}
+                          </td>
                           <td className="py-4">
                             <button
                               onClick={() => handleDeleteAttendanceRecord(record.id)}
@@ -876,6 +906,15 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
       `}} />
     </div>
       )}
+      
+      {/* PHOTO MODAL */}
+      <PhotoModal 
+        isOpen={isPhotoModalOpen}
+        photoUrl={selectedPhoto.url}
+        studentName={selectedPhoto.studentName}
+        regNumber={selectedPhoto.regNumber}
+        onClose={() => setIsPhotoModalOpen(false)}
+      />
     </>
   );
 };
