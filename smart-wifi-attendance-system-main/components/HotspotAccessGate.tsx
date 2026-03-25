@@ -57,25 +57,14 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
   };
 
   const isAuthorizedLocal = (localIps: string[]): boolean => {
+    // STRICT: Only allow your specific hotspot network (10.71.70.x)
+    // Students CANNOT use personal hotspots or other private networks
     return localIps.some((ip) => {
-      // Allow any 10.x.x.x (hotspot range)
-      if (ip.startsWith('10.')) return true;
+      // Only allow the specific 10.71.70.x subnet (your hotspot)
+      if (ip.startsWith('10.71.70.')) return true;
       
-      // Allow any 192.168.x.x (common private range)
-      if (ip.startsWith('192.168.')) return true;
-      
-      // Allow IPv4 localhost
-      if (ip === '127.0.0.1') return true;
-      
-      // Allow IPv6 localhost
-      if (ip === '::1' || ip === 'localhost') return true;
-      
-      // Allow 172.16.x.x to 172.31.x.x (private range)
-      const parts = ip.split('.');
-      if (parts.length === 4 && parts[0] === '172') {
-        const secondOctet = parseInt(parts[1], 10);
-        if (secondOctet >= 16 && secondOctet <= 31) return true;
-      }
+      // Allow localhost only for development
+      if (ip === '127.0.0.1' || ip === '::1') return true;
       
       return false;
     });
@@ -93,7 +82,7 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
       }
 
       setAccessState('denied');
-      setReason('Connect to authorized hotspot network (10.x.x.x or 192.168.x.x) to access.');
+      setReason('You must connect to your school/institution hotspot to access this system. Personal internet is not allowed.');
     } catch (error) {
       console.error('Access check error:', error);
       setAccessState('denied');
