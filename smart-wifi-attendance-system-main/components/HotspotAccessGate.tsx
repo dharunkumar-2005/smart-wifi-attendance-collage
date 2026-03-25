@@ -10,57 +10,108 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
   const [accessState, setAccessState] = useState<AccessState>('checking');
   const [reason, setReason] = useState<string>('Detecting network environment...');
 
-  // Set your protected/authorized hotspot IP here, or use environment variable VITE_AUTHORIZED_HOTSPOT.
+  // Primary authorized hotspot network identification.
+  // Use env var to change without code edit; fallback to the IP you provided.
   const AUTHORIZED_HOTSPOT_HOST = (import.meta.env.VITE_AUTHORIZED_HOTSPOT as string) || '10.71.70.233';
+  const AUTHORIZED_HOTSPOT_PREFIX = AUTHORIZED_HOTSPOT_HOST.split('.').slice(0, 3).join('.') + '.'; // 10.71.70.
 
-  const allowedSubnetCheck = (hostname: string) => {
-    if (!hostname) return false;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-
-    const localPatterns = [
-      /^192\.168\.\d+\.\d+$/,
-      /^10\.\d+\.\d+\.\d+$/,
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+$/
-    ];
-
-    if (localPatterns.some((p) => p.test(hostname))) return true;
-
-    const allowedHotspotHosts = ['192.168.137.1', '192.168.43.1', '10.0.0.1', '192.168.0.1', AUTHORIZED_HOTSPOT_HOST];
-    return allowedHotspotHosts.includes(hostname);
+  const parseCandidateIPs = (candidate: string): string[] => {
+    const ips: string[] = [];
+    const ipRegex = /([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/g;
+    let match;
+    while ((match = ipRegex.exec(candidate)) !== null) {
+      ips.push(match[1]);
+    }
+    return ips;
   };
 
-  const checkAccess = () => {
-    const hostname = window.location.hostname;
-    const isAllowedHost = allowedSubnetCheck(hostname);
-    const isAuthorizedHost = hostname === AUTHORIZED_HOTSPOT_HOST;
+  const getLocalIPs = async (): Promise<string[]> => {
+    const ips = new Set<string>();
 
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        const candidate = event.candidate.candidate;
+        parseCandidateIPs(candidate).forEach((ip) => ips.add(ip));
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(() => resolve(), 1500);
+        pc.onicecandidate = (event) => {
+          if (!event.candidate) {
+            window.clearTimeout(timeout);
+            resolve();
+            return;
+          }
+          const candidate = event.candidate.candidate;
+          parseCandidateIPs(candidate).forEach((ip) => ips.add(ip));
+        };
+      });
+      pc.close();
+    } catch (error) {
+      console.warn('WebRTC local IP discovery failed:', error);
+    }
+
+    return Array.from(ips);
+  };
+
+  const isAuthorizedLocal = (localIps: string[]) => {
+    // If any local IP is the exact hotspot host, allow.
+    if (localIps.includes(AUTHORIZED_HOTSPOT_HOST)) return true;
+
+    // If any local IP is same subnet block as hotspot, allow.
+    if (localIps.some((ip) => ip.startsWith(AUTHORIZED_HOTSPOT_PREFIX))) return true;
+
+    // And allow direct localhost cases for dev convenience.
+    if (localIps.some((ip) => ip === '127.0.0.1' || ip === 'localhost')) return true;
+
+    return false;
+  };
+
+  const checkAccess = async () => {
+    setAccessState('checking');
+    setReason('Verifying hotspot network connection...');
+
+    const localIps = await getLocalIPs();
     const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     const connectionType = (connection?.type && typeof connection.type === 'string') ? connection.type.toLowerCase() : '';
 
     const isWifiConnection = connectionType === 'wifi' || connectionType === 'ethernet';
+    const hasAuthorizedIP = isAuthorizedLocal(localIps);
 
-    // Primary policy: allow only when we are on the authorized hotspot host or recognized local net
-    if (isAuthorizedHost || isAllowedHost) {
+    if (hasAuthorizedIP && isWifiConnection) {
       setAccessState('allowed');
-      setReason('Connected to authorized network. Access granted.');
+      setReason('Connected to authorized hotspot network. Access granted.');
       return;
     }
 
-    // If we know the connection type and it is not Wi-Fi/ethernet, deny explicitly.
-    if (connectionType && !isWifiConnection) {
+    if (hasAuthorizedIP && !isWifiConnection) {
+      // Some browsers don't expose Network Information as Wi-Fi; still rely on local IP match.
+      setAccessState('allowed');
+      setReason('Connected to authorized hotspot network (local IP matched). Access granted.');
+      return;
+    }
+
+    // explicit deny states
+    if (!hasAuthorizedIP) {
       setAccessState('denied');
-      setReason(`Access Denied: connect to the authorized hotspot network (detected network type: ${connectionType}).`);
+      setReason(`Access Restricted: connect to authorized hotspot ${AUTHORIZED_HOTSPOT_HOST} on local network.`);
       return;
     }
 
-    // Fallback when we cannot get reliable connection info.
     setAccessState('denied');
-    setReason(`Connect to authorized network: ${AUTHORIZED_HOTSPOT_HOST} (or one of the local hotspot ranges).`);
+    setReason('Access Restricted: unable to verify authorized network.');
   };
 
   useEffect(() => {
     checkAccess();
-    const interval = window.setInterval(checkAccess, 2500);
+    const interval = window.setInterval(checkAccess, 5000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -79,9 +130,9 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#1f1f28] text-white p-6">
         <div className="max-w-lg bg-white/10 backdrop-blur-xl rounded-2xl border border-red-400/30 p-7 text-center">
-          <h1 className="text-3xl font-bold text-red-300 mb-3">Access Denied</h1>
+          <h1 className="text-3xl font-bold text-red-300 mb-3">Access Restricted</h1>
           <p className="mb-5">{reason}</p>
-          <p className="mb-5">Connect to authorized network <strong>{AUTHORIZED_HOTSPOT_HOST}</strong> and refresh the page.</p>
+          <p className="mb-5">Connect to your authorized hotspot network and refresh.</p>
           <button
             onClick={checkAccess}
             className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-400"
