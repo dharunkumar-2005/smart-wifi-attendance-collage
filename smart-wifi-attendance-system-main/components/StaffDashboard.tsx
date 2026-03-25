@@ -161,14 +161,20 @@ const AdminDashboardComponent: React.FC<AdminDashboardComponentProps> = ({
   };
 
   const handleWipeDevice = async (regNo: string) => {
-    if (!window.confirm(`Wipe device binding for ${regNo}?`)) return;
+    if (!window.confirm(`⚠️ WARNING: This will reset ALL device and mobile bindings for ${regNo}!\n\nThe student will be able to use this register number on a new device.\n\nContinue?`)) return;
     try {
-      await update(ref(realtimeDatabase, `students/${regNo}`), { deviceId: '' });
-      setMessage({ type: 'success', text: `✅ Device binding wiped for ${regNo}` });
-      if (onWipeDevice) await onWipeDevice(regNo);
-      setTimeout(() => setMessage(null), 2500);
+      if (onWipeDevice) {
+        await onWipeDevice(regNo);
+        setMessage({ type: 'success', text: `✅ Device and mobile bindings reset for ${regNo}` });
+      } else {
+        await update(ref(realtimeDatabase, `students/${regNo}`), { deviceId: null });
+        setMessage({ type: 'success', text: `✅ Device binding wiped for ${regNo}` });
+      }
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
-      setMessage({ type: 'error', text: `❌ Error wiping device: ${error instanceof Error ? error.message : ''}` });
+      console.error('Wipe device error:', error);
+      setMessage({ type: 'error', text: `❌ Error wiping device: ${error instanceof Error ? error.message : 'Unknown error'}` });
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 

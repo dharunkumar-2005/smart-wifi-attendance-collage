@@ -94,7 +94,7 @@ export default function App() {
     if (window.confirm(`⚠️ WARNING: This will reset ALL device and mobile bindings for ${regNo}!\n\nThe student will be able to use this register number on a new device.\n\nContinue?`)) {
       try {
         // Clear device binding from students collection
-        await update(ref(db, `students/${regNo}`), { deviceId: null });
+        await update(ref(db, `students/${regNo}`), { deviceId: null, deviceFingerprint: null });
 
         // ===== CRITICAL: Clear device bindings from ALL attendance records =====
         // This allows the register number to be used on a new device
@@ -102,27 +102,31 @@ export default function App() {
         const attendanceSnap = await get(attendanceRef);
         const attendanceData = attendanceSnap.val() || {};
 
-        const updates: { [key: string]: any } = {};
+        let updateCount = 0;
 
         // Find all attendance records for this register number and clear device bindings
-        Object.entries(attendanceData).forEach(([recordId, record]: [string, any]) => {
+        Object.entries(attendanceData).forEach(async ([recordId, record]: [string, any]) => {
           if (record.regNo === regNo) {
-            // Clear device binding from this attendance record
-            updates[`attendance/${recordId}/deviceId`] = null;
-            updates[`attendance/${recordId}/deviceFingerprint`] = null;
-            console.log(`Clearing device binding for attendance record ${recordId}`);
+            try {
+              // Update each attendance record individually to avoid batch operation issues
+              await update(ref(db, `attendance/${recordId}`), { 
+                deviceId: null, 
+                deviceFingerprint: null 
+              });
+              updateCount++;
+              console.log(`Cleared device binding for attendance record ${recordId}`);
+            } catch (err) {
+              console.error(`Error updating record ${recordId}:`, err);
+            }
           }
         });
 
-        if (Object.keys(updates).length > 0) {
-          await update(ref(db), updates);
-          console.log(`Cleared device bindings for ${Object.keys(updates).length} attendance records`);
-        }
-
-        alert(`✅ Device and mobile bindings reset for ${regNo}!\n\nThe student can now use this register number on a new device.`);
+        setTimeout(() => {
+          alert(`✅ Device and mobile bindings reset for ${regNo}!\n\nThe student can now use this register number on a new device.\n\nUpdated ${updateCount} attendance records.`);
+        }, 500);
       } catch (error) {
         console.error("Wipe Error:", error);
-        alert("Error resetting device binding. Please try again.");
+        alert(`Error resetting device binding: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
       }
     }
   };
