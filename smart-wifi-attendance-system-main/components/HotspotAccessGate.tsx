@@ -62,16 +62,29 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
   };
 
   const isAuthorizedLocal = (localIps: string[]) => {
-    // If any local IP is the exact hotspot host, allow.
-    if (localIps.includes(AUTHORIZED_HOTSPOT_HOST)) return true;
-
-    // If any local IP is same subnet block as hotspot, allow.
-    if (localIps.some((ip) => ip.startsWith(AUTHORIZED_HOTSPOT_PREFIX))) return true;
-
-    // And allow direct localhost cases for dev convenience.
-    if (localIps.some((ip) => ip === '127.0.0.1' || ip === 'localhost')) return true;
-
-    return false;
+    // Check if any local IP is in an authorized private/local range
+    return localIps.some((ip) => {
+      // Allow any 10.x.x.x (hotspot range)
+      if (ip.startsWith('10.')) return true;
+      
+      // Allow any 192.168.x.x (common private range)
+      if (ip.startsWith('192.168.')) return true;
+      
+      // Allow IPv4 localhost
+      if (ip === '127.0.0.1') return true;
+      
+      // Allow IPv6 localhost
+      if (ip === '::1' || ip === 'localhost') return true;
+      
+      // Allow 172.16.x.x to 172.31.x.x (private range)
+      const parts = ip.split('.');
+      if (parts.length === 4 && parts[0] === '172') {
+        const secondOctet = parseInt(parts[1], 10);
+        if (secondOctet >= 16 && secondOctet <= 31) return true;
+      }
+      
+      return false;
+    });
   };
 
   const checkAccess = async () => {
@@ -101,7 +114,7 @@ const HotspotAccessGate: React.FC<HotspotAccessGateProps> = ({ children }) => {
     // explicit deny states
     if (!hasAuthorizedIP) {
       setAccessState('denied');
-      setReason(`Access Restricted: connect to authorized hotspot ${AUTHORIZED_HOTSPOT_HOST} on local network.`);
+      setReason(`Access Restricted: connect to the authorized hotspot network (10.x.x.x or 192.168.x.x local network).`);
       return;
     }
 
